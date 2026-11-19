@@ -4,9 +4,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 let client: SupabaseClient | null = null;
 
 /**
- * Client Supabase côté serveur avec la clé service_role (contourne la RLS).
- * Étape 1 uniquement : à l'étape 2, les lectures/écritures passeront par un
- * client lié à la session de l'utilisateur, soumis aux politiques RLS.
+ * Client Supabase avec la clé service_role (contourne la RLS).
+ * Réservé aux opérations d'authentification : création des comptes,
+ * rattachement d'un utilisateur à son profil, invitations.
+ * Ne jamais l'utiliser pour lire/écrire les données métier.
  */
 export function supabaseAdmin(): SupabaseClient {
   if (client) return client;

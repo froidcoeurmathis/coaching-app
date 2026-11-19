@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { buttonClass, cn } from "@/components/ui";
-import { requireCoach } from "@/lib/db/coach";
+import { requireCoach } from "@/lib/auth/session";
 import { listAthletes } from "@/lib/db/athletes";
 import { formatDay } from "@/lib/format";
 

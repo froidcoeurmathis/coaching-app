@@ -4,10 +4,11 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AthleteForm } from "@/components/athlete-form";
 import { ArchiveButton } from "@/components/archive-button";
+import { AthleteAccess } from "@/components/athlete-access";
 import { PacesEditor } from "@/components/paces-editor";
 import { ReferenceLoads } from "@/components/reference-loads";
 import { buttonClass, Card } from "@/components/ui";
-import { requireCoach } from "@/lib/db/coach";
+import { requireCoach } from "@/lib/auth/session";
 import { getAthlete, listExercises } from "@/lib/db/athletes";
 import { formatPace, paceToSpeed } from "@/lib/format";
 
@@ -48,6 +49,17 @@ async function AthleteDetail({ params }: { params: PageProps<"/athletes/[id]">["
       <Card>
         <h2 className="mb-4 font-medium">Profil</h2>
         <AthleteForm athlete={athlete} />
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 font-medium">Accès à l&apos;application</h2>
+        <AthleteAccess
+          athleteId={athlete.id}
+          email={athlete.email}
+          linked={!!athlete.profile_id}
+          invitedAt={athlete.invited_at}
+          archived={!!athlete.archived_at}
+        />
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">

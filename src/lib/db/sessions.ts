@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { addDays, parseISO } from "date-fns";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { toISODate } from "@/lib/format";
 import type { SessionStatus, SessionWithBlocks } from "./types";
 
@@ -24,7 +24,7 @@ export async function listWeekSessions(
   await connection();
   if (!athleteIds.length) return [];
   const weekEnd = toISODate(addDays(parseISO(weekStart), 6));
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("sessions")
     .select(SESSION_SELECT)
     .in("athlete_id", athleteIds)
@@ -37,7 +37,7 @@ export async function listWeekSessions(
 }
 
 export async function getSession(coachId: string, id: string): Promise<SessionWithBlocks | null> {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("sessions")
     .select(`${SESSION_SELECT}, athlete:athletes!inner(coach_id)`)
     .eq("id", id)
@@ -82,7 +82,7 @@ export type BlockPayload = {
 
 /** Crée ou met à jour une séance et ses blocs (transaction côté SQL). */
 export async function saveSession(session: SessionPayload, blocks: BlockPayload[]): Promise<string> {
-  const { data, error } = await supabaseAdmin().rpc("save_session", {
+  const { data, error } = await (await supabaseServer()).rpc("save_session", {
     p_session: session,
     p_blocks: blocks,
   });
@@ -91,7 +91,7 @@ export async function saveSession(session: SessionPayload, blocks: BlockPayload[
 }
 
 export async function deleteSession(id: string) {
-  const { error } = await supabaseAdmin().from("sessions").delete().eq("id", id);
+  const { error } = await (await supabaseServer()).from("sessions").delete().eq("id", id);
   if (error) throw error;
 }
 

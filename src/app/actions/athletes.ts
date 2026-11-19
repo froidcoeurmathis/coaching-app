@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createCoach, requireCoach } from "@/lib/db/coach";
+import { requireCoach } from "@/lib/auth/session";
+import { markInvited, normalizeEmail, sendLoginEmail } from "@/lib/auth/accounts";
 import {
   addReferenceLoad,
+  getAthlete,
   createAthlete,
   deleteReferenceLoad,
   replacePaces,
@@ -43,23 +45,6 @@ function str(formData: FormData, key: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Profil coach (étape 1 : créé une seule fois, sans compte)
-// ---------------------------------------------------------------------------
-
-export async function createCoachAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const parsed = z
-    .object({
-      full_name: z.string().trim().min(1, "Nom requis"),
-      email: z.union([z.literal(""), z.email("E-mail invalide")]),
-    })
-    .safeParse({ full_name: str(formData, "full_name"), email: str(formData, "email").trim() });
-  if (!parsed.success) return fieldErrors(parsed.error);
-  await createCoach(parsed.data.full_name, parsed.data.email || null);
-  revalidatePath("/", "layout");
-  return { ok: true };
-}
-
-// ---------------------------------------------------------------------------
 // Fiche coaché
 // ---------------------------------------------------------------------------
 
@@ -70,7 +55,7 @@ const athleteSchema = z
     email: z
       .string()
       .trim()
-      .transform((v) => (v === "" ? null : v))
+      .transform((v) => (v === "" ? null : normalizeEmail(v)))
       .pipe(z.email("E-mail invalide").nullable()),
     goal: optionalText,
     target_event: optionalText,
@@ -190,4 +175,32 @@ export async function deleteReferenceLoadAction(athleteId: string, id: string) {
   const coach = await requireCoach();
   await deleteReferenceLoad(coach.id, athleteId, id);
   revalidatePath(`/athletes/${athleteId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Invitation : envoie au coaché un e-mail avec son lien de connexion.
+// ---------------------------------------------------------------------------
+
+export async function inviteAthleteAction(athleteId: string): Promise<FormState> {
+  const coach = await requireCoach();
+  const athlete = await getAthlete(coach.id, athleteId); // RLS : uniquement ses coachés
+  if (!athlete) return { error: "Coaché introuvable." };
+  if (!athlete.email) return { error: "Renseignez d'abord l'e-mail du coaché." };
+  if (athlete.archived_at) return { error: "Ce coaché est archivé." };
+
+  const res = await sendLoginEmail(athlete.email);
+  if (!res.ok && res.reason === "recently_sent") {
+    return { error: "Un e-mail vient déjà d'être envoyé à ce coaché. Réessayez dans une minute." };
+  }
+  if (!res.ok) {
+    return {
+      error:
+        res.reason === "rate_limited"
+          ? "Limite d'envoi d'e-mails atteinte. Réessayez dans quelques minutes."
+          : "L'e-mail n'a pas pu être envoyé.",
+    };
+  }
+  await markInvited(athlete.id);
+  revalidatePath(`/athletes/${athleteId}`);
+  return { ok: true };
 }

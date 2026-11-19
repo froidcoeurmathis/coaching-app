@@ -29,6 +29,7 @@ export type Athlete = {
   hr_rest: number | null;
   notes: string | null;
   archived_at: string | null;
+  invited_at: string | null;
   created_at: string;
   updated_at: string;
 };

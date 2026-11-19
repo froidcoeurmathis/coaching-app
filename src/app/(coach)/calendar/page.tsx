@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { WeekCalendar } from "@/components/calendar/week-calendar";
-import { requireCoach } from "@/lib/db/coach";
+import { requireCoach } from "@/lib/auth/session";
 import { listAthletes, listExercises } from "@/lib/db/athletes";
 import { listWeekSessions } from "@/lib/db/sessions";
 import { parseWeekParam, weekDays } from "@/lib/format";

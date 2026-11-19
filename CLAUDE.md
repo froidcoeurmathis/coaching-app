@@ -35,12 +35,27 @@ hebdomadaire ; chaque coaché consulte ses séances sur mobile et les coche quan
 Fonctions SQL : `save_session(p_session, p_blocks)` crée/met à jour une séance et remplace ses
 blocs en une transaction (les exercices inconnus sont ajoutés à la bibliothèque) ;
 `ensure_exercise(coach, nom)`. Plusieurs séances possibles le même jour (`sessions.position`).
-Étape 1 sans auth : le « coach courant » est l'unique profil `coach` (`getCurrentCoach`), créé
-via un formulaire d'accueil s'il n'existe pas.
+Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
 
-Sécurité : RLS activée sur toutes les tables dès l'étape 1. Sans auth, l'app accède à la base
-uniquement côté serveur (clé `service_role`, jamais exposée au navigateur). Les politiques RLS
-coach/coaché sont écrites à l'étape 2.
+## Authentification & sécurité (étape 2)
+
+- Connexion sans mot de passe : e-mail avec **lien magique** (`/auth/confirm?token_hash=…`) **et
+  code à 6 chiffres** (saisi sur `/login`, utile si le lien s'ouvre dans un autre navigateur).
+  Modèle d'e-mail : `supabase/templates/magic_link.html` (à recopier dans le dashboard en prod).
+- Seules les adresses connues reçoivent un e-mail (`isAllowedEmail`) : profil existant,
+  `COACH_EMAIL`, ou fiche coaché active. Réponse identique sinon (pas d'énumération).
+- Au premier login, `claimProfile` (service_role) relie `auth.users` → `profiles.user_id` :
+  profil existant avec cet e-mail, sinon profil coach si `COACH_EMAIL`, sinon création du
+  profil coaché depuis sa fiche (`athletes.profile_id`). Aucun profil → déconnexion.
+- Invitation : bouton sur la fiche coaché → même e-mail de connexion (`athletes.invited_at`).
+- `src/proxy.ts` rafraîchit la session et renvoie les visiteurs vers `/login` ; les layouts
+  vérifient le rôle (`requireCoach` / `requireAthlete` dans `src/lib/auth/session.ts`).
+- Données métier : client Supabase **lié à l'utilisateur** (`supabaseServer()`), soumis à la RLS.
+  `supabaseAdmin()` (service_role) est réservé à `src/lib/auth/accounts.ts`.
+- RLS (`supabase/migrations/20261120000000_auth_rls.sql`) : le coach gère ses coachés, leurs
+  allures/charges, séances et blocs, et sa bibliothèque ; le coaché lit uniquement ses données
+  (aucune écriture pour l'instant ; la validation des séances passera par une fonction dédiée
+  à l'étape 3). `profile_id`, `role` et `email` des profils ne sont pas modifiables côté client.
 
 ## Plan en 5 étapes
 
@@ -63,16 +78,22 @@ coach/coaché sont écrites à l'étape 2.
 - [x] Étape 1 — schéma + seed, liste/fiche coachés (allures, charges de réf., archivage),
       calendrier hebdo (grille coachés × jours, filtre, navigation), éditeur de séance
       (blocs, supersets, réordonnancement, statut, duplication, suppression)
-- [ ] Étape 2 — authentification & rôles
+- [x] Étape 2 — lien magique + code, invitation des coachés, RLS coach/coaché, proxy et
+      redirections par rôle, page provisoire `/me` (séances du coaché en lecture seule)
+- [ ] Étape 3 — espace coaché mobile
 
 ## Routes
 
-- `/calendar?week=yyyy-MM-dd&athlete=<id>` : calendrier hebdo du coach
-- `/athletes` (`?archived=1`), `/athletes/new`, `/athletes/[id]` : coachés
+- `/login`, `/auth/confirm` : connexion (publiques)
+- Coach (`src/app/(coach)/`) : `/calendar?week=yyyy-MM-dd&athlete=<id>`, `/athletes`
+  (`?archived=1`), `/athletes/new`, `/athletes/[id]`
+- Coaché : `/me?week=yyyy-MM-dd`
 
 ## Commandes
 
 - `npx supabase start` : Supabase local (Docker) ; `npx supabase db reset` : rejoue migrations + seed
+- E-mails locaux (liens et codes) : Mailpit sur http://127.0.0.1:54324
+- Comptes de démo locaux : `coach@example.com` (coach), `camille@example.com` (coachée)
 - `npm run dev` / `npm run build` / `npm run lint`
 - Variables : voir `.env.example` (`.env.local` en local)
 

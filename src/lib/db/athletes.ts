@@ -1,6 +1,6 @@
 import "server-only";
 import { connection } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseServer } from "@/lib/supabase/server";
 import { toISODate } from "@/lib/format";
 import type { Athlete, AthleteDetail, Exercise } from "./types";
 
@@ -27,7 +27,7 @@ export async function listAthletes(
   { archived = false }: { archived?: boolean } = {},
 ): Promise<AthleteListItem[]> {
   await connection();
-  const db = supabaseAdmin();
+  const db = await supabaseServer();
   let query = db
     .from("athletes")
     .select("*")
@@ -58,7 +58,7 @@ export async function listAthletes(
 
 export async function getAthlete(coachId: string, id: string): Promise<AthleteDetail | null> {
   await connection();
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("athletes")
     .select(
       `*,
@@ -78,7 +78,7 @@ export async function getAthlete(coachId: string, id: string): Promise<AthleteDe
 }
 
 export async function createAthlete(coachId: string, input: AthleteInput): Promise<string> {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("athletes")
     .insert({ ...input, coach_id: coachId })
     .select("id")
@@ -88,7 +88,7 @@ export async function createAthlete(coachId: string, input: AthleteInput): Promi
 }
 
 export async function updateAthlete(coachId: string, id: string, input: AthleteInput) {
-  const { error } = await supabaseAdmin()
+  const { error } = await (await supabaseServer())
     .from("athletes")
     .update(input)
     .eq("coach_id", coachId)
@@ -97,7 +97,7 @@ export async function updateAthlete(coachId: string, id: string, input: AthleteI
 }
 
 export async function setAthleteArchived(coachId: string, id: string, archived: boolean) {
-  const { error } = await supabaseAdmin()
+  const { error } = await (await supabaseServer())
     .from("athletes")
     .update({ archived_at: archived ? new Date().toISOString() : null })
     .eq("coach_id", coachId)
@@ -106,7 +106,7 @@ export async function setAthleteArchived(coachId: string, id: string, archived: 
 }
 
 export async function assertOwnsAthlete(coachId: string, athleteId: string) {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("athletes")
     .select("id")
     .eq("coach_id", coachId)
@@ -122,7 +122,7 @@ export async function replacePaces(
   paces: { label: string; pace_s_per_km: number }[],
 ) {
   await assertOwnsAthlete(coachId, athleteId);
-  const db = supabaseAdmin();
+  const db = await supabaseServer();
   const { error } = await db.from("athlete_paces").delete().eq("athlete_id", athleteId);
   if (error) throw error;
   if (!paces.length) return;
@@ -138,7 +138,7 @@ export async function addReferenceLoad(
   input: { exercise_name: string; load_kg: number; reps: number; tested_on: string | null },
 ) {
   await assertOwnsAthlete(coachId, athleteId);
-  const db = supabaseAdmin();
+  const db = await supabaseServer();
   const { data: exerciseId, error } = await db.rpc("ensure_exercise", {
     p_coach_id: coachId,
     p_name: input.exercise_name,
@@ -157,7 +157,7 @@ export async function addReferenceLoad(
 
 export async function deleteReferenceLoad(coachId: string, athleteId: string, id: string) {
   await assertOwnsAthlete(coachId, athleteId);
-  const { error } = await supabaseAdmin()
+  const { error } = await (await supabaseServer())
     .from("athlete_reference_loads")
     .delete()
     .eq("athlete_id", athleteId)
@@ -167,11 +167,23 @@ export async function deleteReferenceLoad(coachId: string, athleteId: string, id
 
 export async function listExercises(coachId: string): Promise<Exercise[]> {
   await connection();
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await (await supabaseServer())
     .from("exercises")
     .select("*")
     .eq("coach_id", coachId)
     .order("name");
+  if (error) throw error;
+  return data;
+}
+
+/** Fiche du coaché connecté (RLS : il ne peut lire que la sienne). */
+export async function getAthleteForProfile(profileId: string): Promise<Athlete | null> {
+  await connection();
+  const { data, error } = await (await supabaseServer())
+    .from("athletes")
+    .select("*")
+    .eq("profile_id", profileId)
+    .maybeSingle();
   if (error) throw error;
   return data;
 }

@@ -32,7 +32,7 @@ export function AthleteForm({ athlete }: { athlete?: Athlete }) {
         <Field label="Nom" htmlFor="last_name" error={err.last_name}>
           <Input id="last_name" name="last_name" defaultValue={v("last_name")} />
         </Field>
-        <Field label="E-mail" htmlFor="email" error={err.email} hint="Servira à l'invitation (étape 2)">
+        <Field label="E-mail" htmlFor="email" error={err.email} hint="Adresse de connexion du coaché">
           <Input id="email" name="email" type="email" defaultValue={v("email")} />
         </Field>
       </div>

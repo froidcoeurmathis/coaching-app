@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCoach } from "@/lib/db/coach";
+import { requireCoach } from "@/lib/auth/session";
 import { assertOwnsAthlete } from "@/lib/db/athletes";
 import { deleteSession, getSession, saveSession, toPayload } from "@/lib/db/sessions";
 
