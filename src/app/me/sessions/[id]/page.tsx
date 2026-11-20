@@ -7,6 +7,7 @@ import { SessionBlocks } from "@/components/athlete/session-blocks";
 import { cn } from "@/components/ui";
 import { requireAthlete } from "@/lib/auth/session";
 import { getOwnSession } from "@/lib/db/sessions";
+import { getAthleteRefs } from "@/lib/db/athletes";
 import { DISCIPLINE_LABEL, DISCIPLINE_STYLE, formatDayTitle, todayISO, weekStartOf } from "@/lib/format";
 import { parseISO } from "date-fns";
 
@@ -17,6 +18,7 @@ async function SessionPage({ params }: { params: PageProps<"/me/sessions/[id]">[
   const { id } = await params;
   const s = await getOwnSession(id); // RLS : uniquement ses propres séances
   if (!s) notFound();
+  const refs = (await getAthleteRefs([s.athlete_id]))[s.athlete_id];
 
   const week = weekStartOf(parseISO(s.scheduled_on));
   const isFuture = s.scheduled_on > todayISO();
@@ -40,7 +42,7 @@ async function SessionPage({ params }: { params: PageProps<"/me/sessions/[id]">[
       {s.blocks.length > 0 ? (
         <>
           <p className="text-xs text-zinc-500">Touchez un exercice pour le cocher pendant la séance.</p>
-          <SessionBlocks sessionId={s.id} blocks={s.blocks} checkable />
+          <SessionBlocks sessionId={s.id} blocks={s.blocks} checkable refs={refs} />
         </>
       ) : (
         !s.description && <p className="text-sm text-zinc-500">Pas de détail pour cette séance.</p>

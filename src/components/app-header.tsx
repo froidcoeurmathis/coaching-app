@@ -33,7 +33,14 @@ export async function AppHeader() {
           <NavLinks />
         </Suspense>
       )}
-      <span className="hidden text-sm text-zinc-500 sm:inline">{profile.full_name}</span>
+      <Link
+        href="/account"
+        className="rounded-md px-2 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        title="Mon compte"
+      >
+        <span className="hidden sm:inline">{profile.full_name}</span>
+        <span className="sm:hidden" aria-label="Mon compte">Compte</span>
+      </Link>
       <form action={signOutAction}>
         <Button type="submit" variant="ghost" size="sm">
           Déconnexion

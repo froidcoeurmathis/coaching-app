@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCoach } from "@/lib/auth/session";
 import { assertOwnsAthlete } from "@/lib/db/athletes";
-import { deleteSession, getSession, saveSession, toPayload } from "@/lib/db/sessions";
+import { parseISO } from "date-fns";
+import { copyWeek, deleteSession, getSession, saveSession, toPayload } from "@/lib/db/sessions";
+import { weekStartOf } from "@/lib/format";
 
-export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type ActionResult = { ok: true; id?: string; count?: number } | { ok: false; error: string };
 
 const nullableInt = (min: number, max: number) => z.number().int().min(min).max(max).nullable();
 const nullableText = z
@@ -121,6 +123,32 @@ export async function duplicateSessionAction(
     const newId = await saveSession(session, blocks);
     revalidate();
     return { ok: true, id: newId };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+export async function copyWeekAction(
+  fromWeek: string,
+  toWeek: string,
+  athleteIds: string[],
+  targetAthleteId?: string,
+): Promise<ActionResult> {
+  const dates = z.object({ from: z.iso.date(), to: z.iso.date(), ids: z.array(z.guid()).min(1).max(50) });
+  if (!dates.safeParse({ from: fromWeek, to: toWeek, ids: athleteIds }).success) {
+    return { ok: false, error: "Paramètres invalides" };
+  }
+  const from = weekStartOf(parseISO(fromWeek));
+  const to = weekStartOf(parseISO(toWeek));
+  if (from === to && !targetAthleteId) return { ok: false, error: "Choisissez une autre semaine." };
+  try {
+    const coach = await requireCoach();
+    for (const id of athleteIds) await assertOwnsAthlete(coach.id, id);
+    if (targetAthleteId) await assertOwnsAthlete(coach.id, targetAthleteId);
+    const count = await copyWeek(athleteIds, from, to, targetAthleteId);
+    if (count === 0) return { ok: false, error: "Aucune séance à copier cette semaine." };
+    revalidate();
+    return { ok: true, count };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

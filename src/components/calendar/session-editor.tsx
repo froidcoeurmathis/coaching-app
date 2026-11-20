@@ -7,7 +7,9 @@ import {
   saveSessionAction,
   type SaveSessionInput,
 } from "@/app/actions/sessions";
-import type { Discipline, SessionStatus, SessionWithBlocks } from "@/lib/db/types";
+import { saveTemplateAction } from "@/app/actions/templates";
+import type { Discipline, SessionStatus, SessionTemplate, SessionWithBlocks, TemplateBlock } from "@/lib/db/types";
+import { matchPace, targetLoad, type AthleteRefs } from "@/lib/targets";
 import {
   blockLetter,
   DISCIPLINES,
@@ -16,6 +18,8 @@ import {
   parseDuration,
   formatDateTime,
   formatDayTitle,
+  formatNumber,
+  formatPace,
   STATUS_LABEL,
 } from "@/lib/format";
 import { Alert, Button, cn, Field, Input, inputClass, Select, Textarea } from "../ui";
@@ -79,6 +83,30 @@ const emptyBlock = (): BlockDraft => ({
 });
 
 const str = (v: number | string | null | undefined) => (v == null ? "" : String(v).replace(".", ","));
+
+function draftFromTemplate(blocks: TemplateBlock[]): BlockDraft[] {
+  return blocks.map((b) => ({
+    key: k(),
+    title: b.title ?? "",
+    rounds: str(b.rounds),
+    rest: durationInput(b.rest_s),
+    notes: b.notes ?? "",
+    exercises: b.exercises.map((e) => ({
+      key: k(),
+      name: e.name,
+      sets: str(e.sets),
+      reps: e.reps ?? "",
+      distance: str(e.distance_m),
+      duration: durationInput(e.duration_s),
+      intensity: e.intensity ?? "",
+      load_kg: str(e.load_kg),
+      load_pct: str(e.load_pct),
+      rest: durationInput(e.rest_s),
+      notes: e.notes ?? "",
+      showNotes: !!e.notes,
+    })),
+  }));
+}
 
 function draftFromSession(s: SessionWithBlocks): BlockDraft[] {
   return s.blocks.map((b) => ({
@@ -155,17 +183,22 @@ export function SessionEditor({
   target,
   athletes,
   exerciseNames,
+  templates,
+  refs,
   onClose,
 }: {
   target: EditorTarget;
   athletes: CalendarAthlete[];
   exerciseNames: string[];
+  templates: SessionTemplate[];
+  refs: Record<string, AthleteRefs>;
   onClose: () => void;
 }) {
   const existing = "session" in target ? target.session : null;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
   const [athleteId, setAthleteId] = useState(existing?.athlete_id ?? ("athleteId" in target ? target.athleteId : ""));
@@ -196,7 +229,51 @@ export function SessionEditor({
   const touch = () => {
     setDirty(true);
     setError(null);
+    setInfo(null);
   };
+
+  // --- Modèles ----------------------------------------------------------------
+  const applyTemplate = (id: string) => {
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    const hasContent = title.trim() || blocks.some((b) => b.exercises.some((e) => e.name.trim()));
+    if (hasContent && !confirm(`Remplacer le contenu de la séance par le modèle « ${t.name} » ?`)) return;
+    touch();
+    setTitle(t.title);
+    setDiscipline(t.discipline);
+    setDescription(t.description ?? "");
+    setDuration(str(t.duration_min));
+    setBlocks(t.blocks.length ? draftFromTemplate(t.blocks) : [emptyBlock()]);
+    setInfo(`Modèle « ${t.name} » appliqué : ajustez si besoin puis enregistrez.`);
+  };
+
+  const saveAsTemplate = () => {
+    let payload: SaveSessionInput["blocks"];
+    let durationMin: number | null;
+    try {
+      payload = blocksToPayload(blocks);
+      durationMin = num(duration, "Durée", { int: true });
+    } catch (e) {
+      setError(e instanceof DraftError ? e.message : "Données invalides");
+      return;
+    }
+    if (!title.trim()) {
+      setError("Donnez un titre à la séance avant de l'enregistrer comme modèle.");
+      return;
+    }
+    const name = prompt("Nom du modèle :", title.trim());
+    if (!name?.trim()) return;
+    if (templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase()) &&
+        !confirm(`Un modèle « ${name.trim()} » existe déjà. Le remplacer ?`)) return;
+    startTransition(async () => {
+      const res = await saveTemplateAction(name, { title, discipline, description, duration_min: durationMin }, payload);
+      if (res.ok) {
+        setError(null);
+        setInfo(res.replaced ? `Modèle « ${name.trim()} » mis à jour.` : `Modèle « ${name.trim()} » créé.`);
+      } else setError(res.error);
+    });
+  };
+  const athleteRefs = refs[athleteId];
 
   // --- Mutations des blocs -------------------------------------------------
   const updateBlock = (bk: number, patch: Partial<BlockDraft>) => {
@@ -317,6 +394,27 @@ export function SessionEditor({
 
         {/* Corps */}
         <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6">
+          {templates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 p-2.5 dark:bg-zinc-800/40">
+              <label htmlFor="s-template" className="text-sm text-zinc-600 dark:text-zinc-400">
+                Partir d&apos;un modèle
+              </label>
+              <Select
+                id="s-template"
+                className="w-auto! min-w-56 flex-1 sm:flex-none"
+                value=""
+                onChange={(e) => applyTemplate(e.target.value)}
+              >
+                <option value="">Choisir un modèle…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-6">
             <Field label="Titre *" htmlFor="s-title" className="sm:col-span-3">
               <Input
@@ -427,6 +525,7 @@ export function SessionEditor({
                       exercise={e}
                       onChange={(patch) => updateExercise(b.key, e.key, patch)}
                       onRemove={() => removeExercise(b.key, e.key)}
+                      refs={athleteRefs}
                     />
                   ))}
                 </div>
@@ -512,6 +611,7 @@ export function SessionEditor({
         {/* Pied */}
         <div className="space-y-3 border-t border-zinc-200 px-4 py-3 sm:px-6 dark:border-zinc-800">
           {error && <Alert>{error}</Alert>}
+          {info && !error && <Alert tone="success">{info}</Alert>}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex gap-1">
               {existing && (
@@ -524,6 +624,9 @@ export function SessionEditor({
                   </Button>
                 </>
               )}
+              <Button variant="ghost" size="sm" onClick={saveAsTemplate} disabled={pending}>
+                Enregistrer comme modèle
+              </Button>
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={close}>
@@ -545,11 +648,13 @@ function ExerciseRow({
   exercise: e,
   onChange,
   onRemove,
+  refs,
 }: {
   label: string;
   exercise: ExerciseDraft;
   onChange: (patch: Partial<ExerciseDraft>) => void;
   onRemove: () => void;
+  refs?: AthleteRefs;
 }) {
   const small = "h-8 px-2 text-center";
   return (
@@ -599,6 +704,7 @@ function ExerciseRow({
           </Button>
         </div>
       </div>
+      <TargetHint exercise={e} refs={refs} />
       {e.showNotes && (
         <Input
           aria-label={`${label} — notes`}
@@ -647,5 +753,30 @@ function Mini({
         className={className}
       />
     </div>
+  );
+}
+
+/** Cibles calculées à partir des références du coaché (charge en %, allure nommée). */
+function TargetHint({ exercise: e, refs }: { exercise: ExerciseDraft; refs?: AthleteRefs }) {
+  if (!refs) return null;
+  const pct = Number(e.load_pct.replace(",", "."));
+  const load = e.load_pct.trim() && !Number.isNaN(pct) && !e.load_kg.trim() ? targetLoad(e.name, pct, refs.loads) : null;
+  const pace = matchPace(e.intensity, refs.paces);
+  if (!load && !pace) return null;
+  return (
+    <p className="mt-1 text-xs text-sky-700 lg:ml-12 dark:text-sky-400">
+      {load && (
+        <>
+          ≈ <strong>{formatNumber(load.kg)} kg</strong> ({formatNumber(pct)} % du 1RM estimé {formatNumber(Math.round(load.oneRepMax))} kg,
+          réf. {formatNumber(load.ref.load_kg)} kg × {load.ref.reps})
+        </>
+      )}
+      {load && pace && " · "}
+      {pace && (
+        <>
+          {pace.label} ≈ <strong>{formatPace(pace.pace_s_per_km)}</strong>
+        </>
+      )}
+    </p>
   );
 }

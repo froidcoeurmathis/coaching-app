@@ -37,25 +37,25 @@ blocs en une transaction (les exercices inconnus sont ajoutés à la bibliothèq
 `ensure_exercise(coach, nom)`. Plusieurs séances possibles le même jour (`sessions.position`).
 Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
 
-## Authentification & sécurité (étape 2)
+## Authentification & sécurité
 
-- Connexion sans mot de passe : e-mail avec **lien magique** (`/auth/confirm?token_hash=…`) **et
-  code à 6 chiffres** (saisi sur `/login`, utile si le lien s'ouvre dans un autre navigateur).
-  Modèle d'e-mail : `supabase/templates/magic_link.html` (à recopier dans le dashboard en prod).
-- Seules les adresses connues reçoivent un e-mail (`isAllowedEmail`) : profil existant,
-  `COACH_EMAIL`, ou fiche coaché active. Réponse identique sinon (pas d'énumération).
-- Au premier login, `claimProfile` (service_role) relie `auth.users` → `profiles.user_id` :
-  profil existant avec cet e-mail, sinon profil coach si `COACH_EMAIL`, sinon création du
-  profil coaché depuis sa fiche (`athletes.profile_id`). Aucun profil → déconnexion.
-- Invitation : bouton sur la fiche coaché → même e-mail de connexion (`athletes.invited_at`).
+- Connexion par **e-mail + mot de passe** (`signInWithPassword`). Aucun e-mail n'est envoyé par
+  l'appli (pas de SMTP à configurer). L'étape 2 utilisait un lien magique + code : remplacé à
+  l'étape 4 à la demande du coach.
+- Le **coach** crée l'accès d'un coaché depuis sa fiche (« Créer l'accès » : e-mail de la fiche +
+  mot de passe saisi ou généré, affiché une fois pour être transmis) et peut le réinitialiser.
+  `createAthleteAccess` / `setPasswordForProfile` dans `src/lib/auth/accounts.ts` (service_role).
+- Mot de passe du coach : `npm run set-password -- email "mot de passe"` (script
+  `scripts/set-password.mjs`, clé service_role). Première connexion avec `COACH_EMAIL` → profil
+  coach créé ou rattaché (`claimProfile`). Chacun change son mot de passe sur `/account`.
 - `src/proxy.ts` rafraîchit la session et renvoie les visiteurs vers `/login` ; les layouts
   vérifient le rôle (`requireCoach` / `requireAthlete` dans `src/lib/auth/session.ts`).
 - Données métier : client Supabase **lié à l'utilisateur** (`supabaseServer()`), soumis à la RLS.
   `supabaseAdmin()` (service_role) est réservé à `src/lib/auth/accounts.ts`.
 - RLS (`supabase/migrations/20261120000000_auth_rls.sql`) : le coach gère ses coachés, leurs
-  allures/charges, séances et blocs, et sa bibliothèque ; le coaché lit uniquement ses données
-  (aucune écriture directe). `profile_id`, `role` et `email` des profils ne sont pas modifiables
-  côté client.
+  allures/charges, séances et blocs, sa bibliothèque et ses modèles ; le coaché lit uniquement ses
+  données (aucune écriture directe). `profile_id`, `role` et `email` des profils ne sont pas
+  modifiables côté client. `athletes.invited_at` est obsolète.
 
 ## Espace coaché (étape 3)
 
@@ -71,10 +71,29 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
   l'éditeur ; enregistrer la séance côté coach conserve le ressenti.
 - PWA : `src/app/manifest.ts`, icônes dans `public/` (+ `src/app/icon.png`, `apple-icon.png`),
   pas de service worker (non requis pour l'installation). Encart d'aide à l'installation sur
-  `/me` (Android : bouton natif ; iPhone : instructions). Dans l'appli installée sur iPhone, se
-  connecter avec le **code à 6 chiffres** (le lien s'ouvre dans Safari, pas dans l'appli).
+  `/me` (Android : bouton natif ; iPhone : instructions, reconnexion dans l'appli installée).
 - « Aujourd'hui » et la semaine courante sont calculés en heure de Paris (`todayISO()`,
   `currentWeekStart()` dans `src/lib/format.ts`), jamais avec `new Date()` brut.
+
+## Outils coach (étape 4)
+
+- **Modèles** (`session_templates`, migration `20261122000000_templates.sql`) : contenu d'une
+  séance sans date ni coaché, blocs en JSON au format de `save_session`. Créés depuis l'éditeur
+  (« Enregistrer comme modèle », remplace un modèle du même nom), appliqués via « Partir d'un
+  modèle », gérés sur `/templates`.
+- **Copier la semaine** (calendrier) : copie les séances des coachés affichés vers une autre
+  semaine (même jour), au statut « prévue », sans les retours ; option vers un autre coaché si
+  le calendrier est filtré sur un seul. `copyWeek` dans `src/lib/db/sessions.ts`.
+- **Suivi** (`/dashboard`) : par coaché, réalisation de la semaine et des 28 derniers jours
+  (faites / pas faites / non validées), RPE moyen (⚠ si ≥ 8), frise jour par jour, dernier
+  retour ; liste des derniers retours. Statuts jamais codés par la couleur seule.
+- **Calcul automatique** (`src/lib/targets.ts`) : charge en % → kg depuis la charge de
+  référence du même exercice (1RM estimé par Epley si > 1 rép., arrondi 0,5 kg) ; une intensité
+  qui cite une allure de référence (« Seuil », « Qualité »…) affiche l'allure en min/km. Visible
+  dans l'éditeur (indice sous l'exercice) et dans la séance du coaché.
+- **Programme réel de Clara** (première coachée) : `supabase/data/clara.sql`, généré par
+  `node scripts/generate-clara-program.mjs` (12 cycles de 8 jours, 2 nov. 2026 → 5 févr. 2027,
+  72 séances). Idempotent. Sert aussi de données de démo locales.
 
 ## Plan en 5 étapes
 
@@ -101,20 +120,23 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
       redirections par rôle, page provisoire `/me` (séances du coaché en lecture seule)
 - [x] Étape 3 — espace coaché mobile (semaine/jour, détail, validation + RPE + commentaire,
       retour visible par le coach, PWA installable)
-- [ ] Étape 4 — outils coach avancés
+- [x] Étape 4 — connexion par mot de passe (accès créés par le coach), modèles, copie de
+      semaine, tableau de suivi, calcul auto charges/allures, import du programme de Clara
+- [ ] Étape 5 — IA & statistiques
 
 ## Routes
 
-- `/login`, `/auth/confirm` : connexion (publiques)
-- Coach (`src/app/(coach)/`) : `/calendar?week=yyyy-MM-dd&athlete=<id>`, `/athletes`
-  (`?archived=1`), `/athletes/new`, `/athletes/[id]`
+- `/login` : connexion (publique) · `/account` : changer son mot de passe (tous)
+- Coach (`src/app/(coach)/`) : `/calendar?week=yyyy-MM-dd&athlete=<id>`, `/dashboard`,
+  `/athletes` (`?archived=1`), `/athletes/new`, `/athletes/[id]`, `/templates`
 - Coaché : `/me?week=yyyy-MM-dd&day=yyyy-MM-dd`, `/me/sessions/[id]`
 
 ## Commandes
 
 - `npx supabase start` : Supabase local (Docker) ; `npx supabase db reset` : rejoue migrations + seed
-- E-mails locaux (liens et codes) : Mailpit sur http://127.0.0.1:54324
-- Comptes de démo locaux : `coach@example.com` (coach), `camille@example.com` (coachée)
+- Seed local : `seed.sql` → `data/clara.sql` → `seed-accounts.sql` (ordre dans `config.toml`)
+- Comptes de démo locaux : `coach@example.com` / `coach1234`, `clara@example.com` / `clara1234`
+- `npm run set-password -- email "mdp"` · `node scripts/generate-clara-program.mjs`
 - `npm run dev` / `npm run build` / `npm run lint`
 - Variables : voir `.env.example` (`.env.local` en local)
 

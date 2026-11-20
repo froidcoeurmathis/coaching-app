@@ -112,3 +112,36 @@ export type AthleteDetail = Athlete & {
   paces: AthletePace[];
   reference_loads: ReferenceLoad[];
 };
+
+export type SessionTemplate = {
+  id: string;
+  coach_id: string;
+  name: string;
+  title: string;
+  discipline: Discipline;
+  description: string | null;
+  duration_min: number | null;
+  blocks: TemplateBlock[];
+  created_at: string;
+  updated_at: string;
+};
+
+/** Bloc de modèle : même format que le paramètre p_blocks de save_session. */
+export type TemplateBlock = {
+  title: string | null;
+  rounds: number | null;
+  rest_s: number | null;
+  notes: string | null;
+  exercises: {
+    name: string;
+    sets: number | null;
+    reps: string | null;
+    distance_m: number | null;
+    duration_s: number | null;
+    intensity: string | null;
+    load_kg: number | null;
+    load_pct: number | null;
+    rest_s: number | null;
+    notes: string | null;
+  }[];
+};

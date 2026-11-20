@@ -73,7 +73,7 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = ["./seed.sql", "./data/clara.sql", "./seed-accounts.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -251,12 +251,6 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
-
-# Lien magique : pointe vers /auth/confirm avec un token_hash (fonctionne même si le lien
-# s'ouvre dans un autre navigateur que celui de la demande) et contient le code à 6 chiffres.
-[auth.email.template.magic_link]
-subject = "Votre lien de connexion"
-content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]

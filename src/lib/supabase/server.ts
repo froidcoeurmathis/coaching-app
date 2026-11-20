@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export function supabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -32,16 +32,5 @@ export async function supabaseServer(): Promise<SupabaseClient> {
         }
       },
     },
-  });
-}
-
-/**
- * Client sans session, pour envoyer un lien de connexion à quelqu'un d'autre
- * que l'utilisateur courant (invitation) sans toucher à ses cookies.
- */
-export function supabaseAnonymous(): SupabaseClient {
-  const { url, key } = supabaseEnv();
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false, flowType: "implicit" },
   });
 }

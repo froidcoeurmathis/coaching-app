@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { SessionWithBlocks } from "@/lib/db/types";
+import type { SessionTemplate, SessionWithBlocks } from "@/lib/db/types";
+import type { AthleteRefs } from "@/lib/targets";
 import {
   DISCIPLINE_STYLE,
   exerciseLabel,
@@ -15,6 +16,7 @@ import {
   volumeSummary,
 } from "@/lib/format";
 import { buttonClass, cn, Select } from "../ui";
+import { CopyWeek } from "./copy-week";
 import { SessionEditor, type EditorTarget } from "./session-editor";
 
 export type CalendarAthlete = { id: string; name: string };
@@ -26,6 +28,8 @@ export function WeekCalendar({
   athleteFilter,
   sessions,
   exerciseNames,
+  templates,
+  refs,
 }: {
   weekStart: string;
   days: string[];
@@ -33,6 +37,8 @@ export function WeekCalendar({
   athleteFilter?: string;
   sessions: SessionWithBlocks[];
   exerciseNames: string[];
+  templates: SessionTemplate[];
+  refs: Record<string, AthleteRefs>;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<EditorTarget | null>(null);
@@ -71,6 +77,14 @@ export function WeekCalendar({
           </Link>
           <h1 className="ml-2 text-lg font-semibold first-letter:uppercase">{formatWeekRange(weekStart)}</h1>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <CopyWeek
+          weekStart={weekStart}
+          athletes={athletes}
+          athleteIds={rows.map((a) => a.id)}
+          singleAthlete={athleteFilter}
+          sessionCount={sessions.length}
+        />
         <Select
           aria-label="Filtrer par coaché"
           className="w-auto! min-w-48"
@@ -84,6 +98,7 @@ export function WeekCalendar({
             </option>
           ))}
         </Select>
+        </div>
       </div>
 
       {athletes.length === 0 ? (
@@ -166,6 +181,8 @@ export function WeekCalendar({
           target={target}
           athletes={athletes}
           exerciseNames={exerciseNames}
+          templates={templates}
+          refs={refs}
           onClose={() => setTarget(null)}
         />
       )}

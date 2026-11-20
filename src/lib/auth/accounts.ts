@@ -1,9 +1,10 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { supabaseAnonymous } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/db/types";
 
-// Opérations de gestion des comptes (clé service_role, côté serveur uniquement).
+// Gestion des comptes (clé service_role, côté serveur uniquement).
+
+export const MIN_PASSWORD_LENGTH = 8;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -20,59 +21,10 @@ function coachEmail(): string | null {
 }
 
 /**
- * Cette adresse a-t-elle le droit de recevoir un lien de connexion ?
- * - un profil existe déjà avec cet e-mail (coach ou coaché) ;
- * - c'est l'adresse du coach définie dans COACH_EMAIL ;
- * - c'est l'e-mail d'une fiche coaché active.
- */
-export async function isAllowedEmail(rawEmail: string): Promise<boolean> {
-  const email = normalizeEmail(rawEmail);
-  if (email === coachEmail()) return true;
-  const db = supabaseAdmin();
-  const [{ count: profiles }, { count: athletes }] = await Promise.all([
-    db.from("profiles").select("id", { count: "exact", head: true }).ilike("email", exact(email)),
-    db
-      .from("athletes")
-      .select("id", { count: "exact", head: true })
-      .ilike("email", exact(email))
-      .is("archived_at", null),
-  ]);
-  return (profiles ?? 0) > 0 || (athletes ?? 0) > 0;
-}
-
-/** Crée le compte Supabase Auth s'il n'existe pas (e-mail considéré comme vérifié). */
-async function ensureAuthUser(email: string) {
-  const { error } = await supabaseAdmin().auth.admin.createUser({ email, email_confirm: true });
-  if (error && error.code !== "email_exists" && !/already.*registered/i.test(error.message)) {
-    throw error;
-  }
-}
-
-export type SendLinkResult =
-  | { ok: true }
-  | { ok: false; reason: "recently_sent" | "rate_limited" | "error"; message: string };
-
-/** Envoie un e-mail contenant un lien magique et un code à 6 chiffres. */
-export async function sendLoginEmail(rawEmail: string): Promise<SendLinkResult> {
-  const email = normalizeEmail(rawEmail);
-  await ensureAuthUser(email);
-  const { error } = await supabaseAnonymous().auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
-  });
-  if (!error) return { ok: true };
-  if (error.status === 429 || error.code === "over_email_send_rate_limit") {
-    // « For security purposes, you can only request this after N seconds » : un e-mail
-    // vient déjà d'être envoyé à cette adresse (limite par utilisateur), il reste valable.
-    const recently = /security purposes/i.test(error.message);
-    return { ok: false, reason: recently ? "recently_sent" : "rate_limited", message: error.message };
-  }
-  console.error("sendLoginEmail", error);
-  return { ok: false, reason: "error", message: error.message };
-}
-
-/**
- * Rattache l'utilisateur authentifié à son profil, en le créant si besoin.
+ * Rattache l'utilisateur authentifié à son profil s'il ne l'est pas encore.
+ * - profil existant (coach ou coaché) avec cet e-mail ;
+ * - adresse COACH_EMAIL : reprend le profil coach sans compte, ou en crée un ;
+ * - fiche coaché active avec cet e-mail : crée son profil coaché.
  * Renvoie null si aucun profil ne peut lui être associé.
  */
 export async function claimProfile(user: { id: string; email?: string | null }): Promise<Profile | null> {
@@ -84,7 +36,6 @@ export async function claimProfile(user: { id: string; email?: string | null }):
   if (!user.email) return null;
   const email = normalizeEmail(user.email);
 
-  // 1. Profil existant (coach ou coaché) avec cet e-mail, pas encore relié.
   const { data: byEmail, error: e2 } = await db
     .from("profiles")
     .select("*")
@@ -93,37 +44,18 @@ export async function claimProfile(user: { id: string; email?: string | null }):
     .limit(1)
     .maybeSingle();
   if (e2) throw e2;
-  if (byEmail) {
-    const { data, error } = await db
-      .from("profiles")
-      .update({ user_id: user.id, email })
-      .eq("id", byEmail.id)
-      .select("*")
-      .single();
-    if (error) throw error;
-    return data;
-  }
+  if (byEmail) return linkProfile(byEmail.id, user.id, email);
 
-  // 2. Adresse du coach (COACH_EMAIL) : reprend un profil coach sans compte ou en crée un.
   if (email === coachEmail()) {
     const { data: orphan } = await db
       .from("profiles")
-      .select("*")
+      .select("id")
       .eq("role", "coach")
       .is("user_id", null)
       .order("created_at")
       .limit(1)
       .maybeSingle();
-    if (orphan) {
-      const { data, error } = await db
-        .from("profiles")
-        .update({ user_id: user.id, email })
-        .eq("id", orphan.id)
-        .select("*")
-        .single();
-      if (error) throw error;
-      return data;
-    }
+    if (orphan) return linkProfile(orphan.id, user.id, email);
     const { data, error } = await db
       .from("profiles")
       .insert({
@@ -138,10 +70,9 @@ export async function claimProfile(user: { id: string; email?: string | null }):
     return data;
   }
 
-  // 3. Fiche coaché active avec cet e-mail : création du profil coaché et rattachement.
   const { data: athlete, error: e3 } = await db
     .from("athletes")
-    .select("id, first_name, last_name")
+    .select("id")
     .ilike("email", exact(email))
     .is("profile_id", null)
     .is("archived_at", null)
@@ -149,31 +80,89 @@ export async function claimProfile(user: { id: string; email?: string | null }):
     .limit(1)
     .maybeSingle();
   if (e3) throw e3;
-  if (athlete) {
-    const { data: profile, error } = await db
-      .from("profiles")
-      .insert({
-        user_id: user.id,
-        role: "athlete",
-        email,
-        full_name: [athlete.first_name, athlete.last_name].filter(Boolean).join(" "),
-      })
-      .select("*")
-      .single();
-    if (error) throw error;
-    const { error: e4 } = await db.from("athletes").update({ profile_id: profile.id }).eq("id", athlete.id);
-    if (e4) throw e4;
-    return profile;
-  }
+  if (athlete) return createAthleteProfile(athlete.id, user.id, email);
 
   return null;
 }
 
-/** Marque l'invitation comme envoyée. */
-export async function markInvited(athleteId: string) {
-  const { error } = await supabaseAdmin()
-    .from("athletes")
-    .update({ invited_at: new Date().toISOString() })
-    .eq("id", athleteId);
+async function linkProfile(profileId: string, userId: string, email: string): Promise<Profile> {
+  const { data, error } = await supabaseAdmin()
+    .from("profiles")
+    .update({ user_id: userId, email })
+    .eq("id", profileId)
+    .select("*")
+    .single();
   if (error) throw error;
+  return data;
+}
+
+async function createAthleteProfile(athleteId: string, userId: string, email: string): Promise<Profile> {
+  const db = supabaseAdmin();
+  const { data: athlete, error: e0 } = await db
+    .from("athletes")
+    .select("first_name, last_name")
+    .eq("id", athleteId)
+    .single();
+  if (e0) throw e0;
+  const { data: profile, error } = await db
+    .from("profiles")
+    .insert({
+      user_id: userId,
+      role: "athlete",
+      email,
+      full_name: [athlete.first_name, athlete.last_name].filter(Boolean).join(" "),
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  const { error: e2 } = await db.from("athletes").update({ profile_id: profile.id }).eq("id", athleteId);
+  if (e2) throw e2;
+  return profile;
+}
+
+export type AccountResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Crée l'accès d'un coaché (e-mail + mot de passe choisi par le coach) et le relie à sa fiche.
+ * L'appelant doit avoir vérifié que la fiche appartient au coach connecté.
+ */
+export async function createAthleteAccess(
+  athlete: { id: string; email: string },
+  password: string,
+): Promise<AccountResult> {
+  const email = normalizeEmail(athlete.email);
+  const db = supabaseAdmin();
+
+  const { data: taken } = await db.from("profiles").select("id").ilike("email", exact(email)).maybeSingle();
+  if (taken) return { ok: false, error: "Cette adresse est déjà utilisée par un autre compte." };
+
+  const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error) {
+    if (error.code === "email_exists") {
+      return { ok: false, error: "Un compte existe déjà avec cette adresse (sans fiche associée). Contactez le support." };
+    }
+    if (error.code === "weak_password") return { ok: false, error: "Mot de passe trop faible." };
+    throw error;
+  }
+  try {
+    await createAthleteProfile(athlete.id, data.user.id, email);
+  } catch (e) {
+    await db.auth.admin.deleteUser(data.user.id); // pas de compte orphelin
+    throw e;
+  }
+  return { ok: true };
+}
+
+/** Change le mot de passe du compte relié à un profil (réinitialisation par le coach). */
+export async function setPasswordForProfile(profileId: string, password: string): Promise<AccountResult> {
+  const db = supabaseAdmin();
+  const { data: profile, error } = await db.from("profiles").select("user_id").eq("id", profileId).single();
+  if (error) throw error;
+  if (!profile.user_id) return { ok: false, error: "Ce coaché n'a pas encore de compte." };
+  const { error: e2 } = await db.auth.admin.updateUserById(profile.user_id, { password });
+  if (e2) {
+    if (e2.code === "weak_password") return { ok: false, error: "Mot de passe trop faible." };
+    throw e2;
+  }
+  return { ok: true };
 }

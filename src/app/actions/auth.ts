@@ -3,65 +3,29 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
-import { claimProfile, isAllowedEmail, normalizeEmail, sendLoginEmail } from "@/lib/auth/accounts";
-import { homeFor } from "@/lib/auth/session";
+import { claimProfile, MIN_PASSWORD_LENGTH, normalizeEmail } from "@/lib/auth/accounts";
+import { getCurrentProfile, homeFor } from "@/lib/auth/session";
 
-export type LoginState = {
-  step: "email" | "code";
-  email?: string;
-  error?: string;
-  info?: string;
-};
+export type AuthFormState = { error?: string; ok?: boolean; email?: string };
 
-const emailSchema = z.email("Adresse e-mail invalide");
-
-/** Étape 1 : envoi du lien magique + code (réponse identique que l'adresse soit connue ou non). */
-export async function sendLoginLinkAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const parsed = emailSchema.safeParse(normalizeEmail(String(formData.get("email") ?? "")));
-  if (!parsed.success) return { step: "email", error: parsed.error.issues[0].message };
-  const email = parsed.data;
-
-  if (await isAllowedEmail(email)) {
-    const res = await sendLoginEmail(email);
-    if (!res.ok && res.reason === "recently_sent") {
-      return {
-        step: "code",
-        email,
-        info: "Un e-mail vient déjà d'être envoyé à cette adresse : utilisez le lien ou le code qu'il contient. Vous pourrez en redemander un dans une minute.",
-      };
-    }
-    if (!res.ok) {
-      return {
-        step: "email",
-        email,
-        error:
-          res.reason === "rate_limited"
-            ? "Trop de demandes d'e-mail. Patientez quelques minutes avant de réessayer."
-            : "L'e-mail n'a pas pu être envoyé. Réessayez dans un instant.",
-      };
-    }
-  }
-  return {
-    step: "code",
-    email,
-    info: "Si cette adresse est associée à un compte, un e-mail vient d'être envoyé avec un lien de connexion et un code.",
-  };
-}
-
-/** Étape 2 (alternative au lien) : saisie du code à 6 chiffres. */
-export async function verifyLoginCodeAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
+/** Connexion par e-mail + mot de passe. */
+export async function signInAction(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
-  const token = String(formData.get("code") ?? "").replace(/\s/g, "");
-  if (!/^\d{6}$/.test(token)) return { step: "code", email, error: "Le code contient 6 chiffres." };
+  const password = String(formData.get("password") ?? "");
+  if (!z.email().safeParse(email).success) return { email, error: "Adresse e-mail invalide." };
+  if (!password) return { email, error: "Saisissez votre mot de passe." };
 
   const supabase = await supabaseServer();
-  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (error || !data.user) return { step: "code", email, error: "Code invalide ou expiré." };
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) {
+    if (error?.status === 429) return { email, error: "Trop de tentatives. Patientez quelques minutes." };
+    return { email, error: "E-mail ou mot de passe incorrect." };
+  }
 
   const profile = await claimProfile(data.user);
   if (!profile) {
     await supabase.auth.signOut();
-    return { step: "email", error: "Aucun espace n'est associé à cette adresse. Contactez votre coach." };
+    return { email, error: "Aucun espace n'est associé à ce compte. Contactez votre coach." };
   }
   redirect(homeFor(profile.role));
 }
@@ -70,4 +34,26 @@ export async function signOutAction() {
   const supabase = await supabaseServer();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+/** Changement de son propre mot de passe (page « Mon compte »). */
+export async function changePasswordAction(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.` };
+  }
+  if (password !== confirm) return { error: "Les deux mots de passe ne correspondent pas." };
+
+  const supabase = await supabaseServer();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    if (error.code === "same_password") return { error: "Choisissez un mot de passe différent de l'actuel." };
+    if (error.code === "weak_password") return { error: "Mot de passe trop faible." };
+    console.error("changePasswordAction", error);
+    return { error: "Le mot de passe n'a pas pu être modifié." };
+  }
+  return { ok: true };
 }

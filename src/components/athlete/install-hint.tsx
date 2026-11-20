@@ -58,7 +58,7 @@ export function InstallHint() {
         {mode === "ios" ? (
           <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">
             Dans Safari, touchez <strong>Partager</strong> puis <strong>« Sur l&apos;écran d&apos;accueil »</strong>. À la
-            première ouverture, connectez-vous avec le <strong>code à 6 chiffres</strong> reçu par e-mail.
+            première ouverture, reconnectez-vous avec votre e-mail et votre mot de passe.
           </p>
         ) : (
           <Button

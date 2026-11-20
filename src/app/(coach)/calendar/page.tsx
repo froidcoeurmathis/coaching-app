@@ -3,7 +3,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { WeekCalendar } from "@/components/calendar/week-calendar";
 import { requireCoach } from "@/lib/auth/session";
-import { listAthletes, listExercises } from "@/lib/db/athletes";
+import { getAthleteRefs, listAthletes, listExercises } from "@/lib/db/athletes";
+import { listTemplates } from "@/lib/db/templates";
 import { listWeekSessions } from "@/lib/db/sessions";
 import { parseWeekParam, weekDays } from "@/lib/format";
 
@@ -16,9 +17,16 @@ async function Calendar({ searchParams }: { searchParams: PageProps<"/calendar">
   const athleteFilter = typeof params.athlete === "string" ? params.athlete : undefined;
 
   const coach = await requireCoach();
-  const [athletes, exercises] = await Promise.all([listAthletes(coach.id), listExercises(coach.id)]);
+  const [athletes, exercises, templates] = await Promise.all([
+    listAthletes(coach.id),
+    listExercises(coach.id),
+    listTemplates(coach.id),
+  ]);
   const shown = athleteFilter ? athletes.filter((a) => a.id === athleteFilter) : athletes;
-  const sessions = await listWeekSessions(shown.map((a) => a.id), weekStart);
+  const [sessions, refs] = await Promise.all([
+    listWeekSessions(shown.map((a) => a.id), weekStart),
+    getAthleteRefs(athletes.map((a) => a.id)),
+  ]);
 
   return (
     <WeekCalendar
@@ -28,6 +36,8 @@ async function Calendar({ searchParams }: { searchParams: PageProps<"/calendar">
       athleteFilter={shown.length === 1 && athleteFilter ? athleteFilter : undefined}
       sessions={sessions}
       exerciseNames={exercises.map((e) => e.name)}
+      templates={templates}
+      refs={refs}
     />
   );
 }

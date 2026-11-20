@@ -2,6 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/format";
+import type { AthleteRefs } from "@/lib/targets";
 import type { Athlete, AthleteDetail, Exercise } from "./types";
 
 export type AthleteInput = Pick<
@@ -186,4 +187,26 @@ export async function getAthleteForProfile(profileId: string): Promise<Athlete |
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/** Références (charges + allures) des coachés, pour le calcul automatique des cibles. */
+export async function getAthleteRefs(athleteIds: string[]): Promise<Record<string, AthleteRefs>> {
+  await connection();
+  const out: Record<string, AthleteRefs> = Object.fromEntries(athleteIds.map((id) => [id, { loads: [], paces: [] }]));
+  if (!athleteIds.length) return out;
+  const db = await supabaseServer();
+  const [{ data: loads, error: e1 }, { data: paces, error: e2 }] = await Promise.all([
+    db
+      .from("athlete_reference_loads")
+      .select("athlete_id, load_kg, reps, tested_on, exercise:exercises(name)")
+      .in("athlete_id", athleteIds),
+    db.from("athlete_paces").select("athlete_id, label, pace_s_per_km").in("athlete_id", athleteIds).order("position"),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  for (const l of loads as unknown as { athlete_id: string; load_kg: number; reps: number; tested_on: string | null; exercise: { name: string } }[]) {
+    out[l.athlete_id]?.loads.push({ exerciseName: l.exercise.name, load_kg: l.load_kg, reps: l.reps, tested_on: l.tested_on });
+  }
+  for (const p of paces) out[p.athlete_id]?.paces.push({ label: p.label, pace_s_per_km: p.pace_s_per_km });
+  return out;
 }

@@ -6,7 +6,9 @@ import { cn } from "./ui";
 
 const LINKS = [
   { href: "/calendar", label: "Calendrier" },
+  { href: "/dashboard", label: "Suivi" },
   { href: "/athletes", label: "Coachés" },
+  { href: "/templates", label: "Modèles" },
 ];
 
 export function NavLinks() {

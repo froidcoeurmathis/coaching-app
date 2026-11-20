@@ -158,3 +158,45 @@ export async function logSession(
   });
   if (error) throw error;
 }
+
+export type SessionSummary = Pick<
+  SessionWithBlocks,
+  "id" | "athlete_id" | "scheduled_on" | "title" | "discipline" | "status" | "rpe" | "athlete_comment" | "feedback_at" | "completed_at"
+>;
+
+/** Séances (sans blocs) d'une période, pour le tableau de suivi. */
+export async function listSessionsBetween(athleteIds: string[], from: string, to: string): Promise<SessionSummary[]> {
+  await connection();
+  if (!athleteIds.length) return [];
+  const { data, error } = await (await supabaseServer())
+    .from("sessions")
+    .select("id, athlete_id, scheduled_on, title, discipline, status, rpe, athlete_comment, feedback_at, completed_at")
+    .in("athlete_id", athleteIds)
+    .gte("scheduled_on", from)
+    .lte("scheduled_on", to)
+    .order("scheduled_on")
+    .order("position");
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Copie les séances d'une semaine vers une autre (même jour de la semaine), au statut « prévue »,
+ * sans les retours du coaché. Si `targetAthleteId` est fourni, les copies lui sont attribuées.
+ */
+export async function copyWeek(
+  athleteIds: string[],
+  fromWeekStart: string,
+  toWeekStart: string,
+  targetAthleteId?: string,
+): Promise<number> {
+  const source = await listWeekSessions(athleteIds, fromWeekStart);
+  const offset = Math.round((parseISO(toWeekStart).getTime() - parseISO(fromWeekStart).getTime()) / 864e5);
+  for (const s of source) {
+    const { session, blocks } = toPayload(s);
+    session.scheduled_on = toISODate(addDays(parseISO(s.scheduled_on), offset));
+    if (targetAthleteId) session.athlete_id = targetAthleteId;
+    await saveSession(session, blocks);
+  }
+  return source.length;
+}

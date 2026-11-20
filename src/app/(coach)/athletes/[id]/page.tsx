@@ -57,7 +57,6 @@ async function AthleteDetail({ params }: { params: PageProps<"/athletes/[id]">["
           athleteId={athlete.id}
           email={athlete.email}
           linked={!!athlete.profile_id}
-          invitedAt={athlete.invited_at}
           archived={!!athlete.archived_at}
         />
       </Card>

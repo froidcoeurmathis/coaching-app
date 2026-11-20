@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireCoach } from "@/lib/auth/session";
-import { markInvited, normalizeEmail, sendLoginEmail } from "@/lib/auth/accounts";
+import {
+  createAthleteAccess,
+  MIN_PASSWORD_LENGTH,
+  normalizeEmail,
+  setPasswordForProfile,
+} from "@/lib/auth/accounts";
 import {
   addReferenceLoad,
   getAthlete,
@@ -178,29 +183,24 @@ export async function deleteReferenceLoadAction(athleteId: string, id: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Invitation : envoie au coaché un e-mail avec son lien de connexion.
+// Accès à l'application : le coach crée le compte du coaché (e-mail + mot de
+// passe qu'il lui transmet) ou réinitialise son mot de passe.
 // ---------------------------------------------------------------------------
 
-export async function inviteAthleteAction(athleteId: string): Promise<FormState> {
+export async function setAthletePasswordAction(athleteId: string, password: string): Promise<FormState> {
   const coach = await requireCoach();
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.` };
+  }
   const athlete = await getAthlete(coach.id, athleteId); // RLS : uniquement ses coachés
   if (!athlete) return { error: "Coaché introuvable." };
-  if (!athlete.email) return { error: "Renseignez d'abord l'e-mail du coaché." };
-  if (athlete.archived_at) return { error: "Ce coaché est archivé." };
 
-  const res = await sendLoginEmail(athlete.email);
-  if (!res.ok && res.reason === "recently_sent") {
-    return { error: "Un e-mail vient déjà d'être envoyé à ce coaché. Réessayez dans une minute." };
-  }
-  if (!res.ok) {
-    return {
-      error:
-        res.reason === "rate_limited"
-          ? "Limite d'envoi d'e-mails atteinte. Réessayez dans quelques minutes."
-          : "L'e-mail n'a pas pu être envoyé.",
-    };
-  }
-  await markInvited(athlete.id);
+  const res = athlete.profile_id
+    ? await setPasswordForProfile(athlete.profile_id, password)
+    : athlete.email
+      ? await createAthleteAccess({ id: athlete.id, email: athlete.email }, password)
+      : { ok: false as const, error: "Renseignez d'abord l'e-mail du coaché dans son profil." };
+  if (!res.ok) return { error: res.error };
   revalidatePath(`/athletes/${athleteId}`);
   return { ok: true };
 }

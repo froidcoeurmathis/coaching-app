@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { SessionBlock } from "@/lib/db/types";
-import { exerciseLabel, formatDuration, intensitySummary, volumeSummary } from "@/lib/format";
+import { exerciseLabel, formatDuration, volumeSummary } from "@/lib/format";
+import { intensityWithTargets, type AthleteRefs } from "@/lib/targets";
 import { cn } from "../ui";
 
 /**
@@ -14,10 +15,12 @@ export function SessionBlocks({
   sessionId,
   blocks,
   checkable = false,
+  refs,
 }: {
   sessionId: string;
   blocks: SessionBlock[];
   checkable?: boolean;
+  refs?: AthleteRefs;
 }) {
   const storageKey = `coaching:checked:${sessionId}`;
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -62,7 +65,8 @@ export function SessionBlocks({
             {b.exercises.map((e, ei) => {
               const label = exerciseLabel(bi, ei, b.exercises.length);
               const isChecked = checked.has(e.id);
-              const details = [volumeSummary(e), intensitySummary(e), e.rest_s != null && `repos ${formatDuration(e.rest_s)}`]
+              const intensity = intensityWithTargets({ ...e, name: e.exercise.name }, refs);
+              const details = [volumeSummary(e), intensity, e.rest_s != null && `repos ${formatDuration(e.rest_s)}`]
                 .filter(Boolean)
                 .join(" · ");
               const content = (
