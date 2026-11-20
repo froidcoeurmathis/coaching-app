@@ -8,6 +8,7 @@ import {
   type SaveSessionInput,
 } from "@/app/actions/sessions";
 import { saveTemplateAction } from "@/app/actions/templates";
+import { generateSessionAction } from "@/app/actions/ai";
 import type { Discipline, SessionStatus, SessionTemplate, SessionWithBlocks, TemplateBlock } from "@/lib/db/types";
 import { matchPace, targetLoad, type AthleteRefs } from "@/lib/targets";
 import {
@@ -185,6 +186,7 @@ export function SessionEditor({
   exerciseNames,
   templates,
   refs,
+  aiEnabled = false,
   onClose,
 }: {
   target: EditorTarget;
@@ -192,6 +194,7 @@ export function SessionEditor({
   exerciseNames: string[];
   templates: SessionTemplate[];
   refs: Record<string, AthleteRefs>;
+  aiEnabled?: boolean;
   onClose: () => void;
 }) {
   const existing = "session" in target ? target.session : null;
@@ -274,6 +277,40 @@ export function SessionEditor({
     });
   };
   const athleteRefs = refs[athleteId];
+
+  // --- Assistant IA -----------------------------------------------------------
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiRequest, setAiRequest] = useState("");
+  const [aiPending, startAi] = useTransition();
+  const generate = () => {
+    let current = null;
+    try {
+      current = {
+        title,
+        discipline,
+        duration_min: num(duration, "Durée", { int: true }),
+        description: description || null,
+        blocks: blocksToPayload(blocks) as TemplateBlock[],
+      };
+    } catch {
+      current = null; // brouillon invalide : on génère sans le contexte de l'éditeur
+    }
+    startAi(async () => {
+      setError(null);
+      setInfo(null);
+      const res = await generateSessionAction({ athleteId, date, request: aiRequest }, current);
+      if (!res.ok) return setError(res.error);
+      const s = res.session;
+      setDirty(true);
+      setTitle(s.title);
+      setDiscipline(s.discipline);
+      setDescription(s.description ?? "");
+      setDuration(str(s.duration_min));
+      setBlocks(s.blocks.length ? draftFromTemplate(s.blocks) : [emptyBlock()]);
+      setInfo(`Proposition de l'IA : ${s.coach_note} Relisez et ajustez avant d'enregistrer.`);
+      setAiOpen(false);
+    });
+  };
 
   // --- Mutations des blocs -------------------------------------------------
   const updateBlock = (bk: number, patch: Partial<BlockDraft>) => {
@@ -394,6 +431,50 @@ export function SessionEditor({
 
         {/* Corps */}
         <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6">
+          {aiEnabled && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 p-2.5 dark:border-violet-900 dark:bg-violet-950/40">
+              {!aiOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setAiOpen(true)}
+                  className="text-sm font-medium text-violet-800 hover:underline dark:text-violet-300"
+                >
+                  ✨ {existing || title ? "Adapter cette séance avec l'IA" : "Générer la séance avec l'IA"}
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <label htmlFor="ai-request" className="block text-sm font-medium text-violet-900 dark:text-violet-200">
+                    ✨ Que doit faire l&apos;IA ?
+                  </label>
+                  <Textarea
+                    id="ai-request"
+                    rows={2}
+                    value={aiRequest}
+                    onChange={(e) => setAiRequest(e.target.value)}
+                    placeholder={
+                      existing || title
+                        ? "ex. Elle est fatiguée : allège de 20 % et remplace les fentes (cheville)."
+                        : "ex. Séance Hyrox de 60 min, focus wall balls et sled, sans course."
+                    }
+                    autoFocus
+                  />
+                  <p className="text-xs text-violet-800/80 dark:text-violet-300/80">
+                    L&apos;IA tient compte de la fiche du coaché, de ses références et de ses derniers ressentis. Rien
+                    n&apos;est enregistré tant que vous ne cliquez pas sur « Enregistrer ».
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={generate} disabled={aiPending || aiRequest.trim().length < 3}>
+                      {aiPending ? "Génération… (quelques secondes)" : "Générer"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setAiOpen(false)} disabled={aiPending}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {templates.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 p-2.5 dark:bg-zinc-800/40">
               <label htmlFor="s-template" className="text-sm text-zinc-600 dark:text-zinc-400">

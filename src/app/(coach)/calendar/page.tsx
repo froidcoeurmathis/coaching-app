@@ -5,6 +5,7 @@ import { WeekCalendar } from "@/components/calendar/week-calendar";
 import { requireCoach } from "@/lib/auth/session";
 import { getAthleteRefs, listAthletes, listExercises } from "@/lib/db/athletes";
 import { listTemplates } from "@/lib/db/templates";
+import { aiEnabled } from "@/lib/ai/generate-session";
 import { listWeekSessions } from "@/lib/db/sessions";
 import { parseWeekParam, weekDays } from "@/lib/format";
 
@@ -38,6 +39,7 @@ async function Calendar({ searchParams }: { searchParams: PageProps<"/calendar">
       exerciseNames={exercises.map((e) => e.name)}
       templates={templates}
       refs={refs}
+      aiEnabled={aiEnabled()}
     />
   );
 }

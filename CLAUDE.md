@@ -95,6 +95,29 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
   `node scripts/generate-clara-program.mjs` (12 cycles de 8 jours, 2 nov. 2026 → 5 févr. 2027,
   72 séances). Idempotent. Sert aussi de données de démo locales.
 
+## IA & statistiques (étape 5)
+
+- **Assistant IA** dans l'éditeur de séance (`src/lib/ai/generate-session.ts`, action
+  `src/app/actions/ai.ts`) : génère une séance ou adapte celle de l'éditeur à partir d'une
+  demande en français. Contexte envoyé : fiche du coaché, allures et charges de référence,
+  séances des 3 dernières semaines (statut, RPE, commentaires), bibliothèque d'exercices.
+  SDK `@anthropic-ai/sdk`, `client.beta.messages.parse` + `betaZodOutputFormat` (sortie au format
+  des blocs de l'appli), modèle `claude-opus-5-5`, effort `medium`, repli serveur
+  `fallbacks: "default"`. Rien n'est enregistré sans validation du coach. Actif seulement si
+  `ANTHROPIC_API_KEY` est défini (sinon le bouton est masqué).
+- **Progression** sur la fiche coaché (`src/components/athlete-progress.tsx`) : 12 dernières
+  semaines, séances faites / prévues, taux de réalisation, temps d'entraînement, répartition par
+  discipline, RPE moyen et volume hebdomadaire (minutes réalisées vs prévues).
+- Test local de l'IA sans coût : lancer l'appli avec `ANTHROPIC_BASE_URL` pointant vers un faux
+  serveur qui renvoie un message au format de l'API.
+
+## Production
+
+- Supabase : projet `coaching-app` (réf. `zelnsxnqijucouvwupyn`, région eu-west-3), migrations
+  appliquées via l'API de gestion (table `supabase_migrations.schema_migrations` à jour).
+- Vercel : projet `coaching-app` relié au dépôt GitHub, déploiement automatique à chaque push sur
+  `main`. URL : https://coaching-app-two-beta.vercel.app
+
 ## Plan en 5 étapes
 
 1. **Modèle de données + espace coach (sans auth)** — schéma complet avec rôles, liste et fiche
@@ -122,7 +145,8 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
       retour visible par le coach, PWA installable)
 - [x] Étape 4 — connexion par mot de passe (accès créés par le coach), modèles, copie de
       semaine, tableau de suivi, calcul auto charges/allures, import du programme de Clara
-- [ ] Étape 5 — IA & statistiques
+- [x] Étape 5 — assistant IA (génération / adaptation de séances), progression par coaché ;
+      mise en production (Supabase + Vercel)
 
 ## Routes
 

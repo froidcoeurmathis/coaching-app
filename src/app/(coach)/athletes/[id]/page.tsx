@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AthleteForm } from "@/components/athlete-form";
 import { ArchiveButton } from "@/components/archive-button";
 import { AthleteAccess } from "@/components/athlete-access";
+import { AthleteProgress } from "@/components/athlete-progress";
 import { PacesEditor } from "@/components/paces-editor";
 import { ReferenceLoads } from "@/components/reference-loads";
 import { buttonClass, Card } from "@/components/ui";
@@ -45,6 +46,13 @@ async function AthleteDetail({ params }: { params: PageProps<"/athletes/[id]">["
           </div>
         </div>
       </div>
+
+      <Card>
+        <h2 className="mb-4 font-medium">Progression</h2>
+        <Suspense fallback={<p className="text-sm text-zinc-500">Chargement…</p>}>
+          <AthleteProgress athleteId={athlete.id} />
+        </Suspense>
+      </Card>
 
       <Card>
         <h2 className="mb-4 font-medium">Profil</h2>

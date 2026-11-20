@@ -30,6 +30,7 @@ export function WeekCalendar({
   exerciseNames,
   templates,
   refs,
+  aiEnabled = false,
 }: {
   weekStart: string;
   days: string[];
@@ -39,6 +40,7 @@ export function WeekCalendar({
   exerciseNames: string[];
   templates: SessionTemplate[];
   refs: Record<string, AthleteRefs>;
+  aiEnabled?: boolean;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<EditorTarget | null>(null);
@@ -183,6 +185,7 @@ export function WeekCalendar({
           exerciseNames={exerciseNames}
           templates={templates}
           refs={refs}
+          aiEnabled={aiEnabled}
           onClose={() => setTarget(null)}
         />
       )}

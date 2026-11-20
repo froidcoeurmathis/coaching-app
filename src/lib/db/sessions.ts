@@ -161,7 +161,17 @@ export async function logSession(
 
 export type SessionSummary = Pick<
   SessionWithBlocks,
-  "id" | "athlete_id" | "scheduled_on" | "title" | "discipline" | "status" | "rpe" | "athlete_comment" | "feedback_at" | "completed_at"
+  | "id"
+  | "athlete_id"
+  | "scheduled_on"
+  | "title"
+  | "discipline"
+  | "status"
+  | "rpe"
+  | "athlete_comment"
+  | "feedback_at"
+  | "completed_at"
+  | "duration_min"
 >;
 
 /** Séances (sans blocs) d'une période, pour le tableau de suivi. */
@@ -170,7 +180,7 @@ export async function listSessionsBetween(athleteIds: string[], from: string, to
   if (!athleteIds.length) return [];
   const { data, error } = await (await supabaseServer())
     .from("sessions")
-    .select("id, athlete_id, scheduled_on, title, discipline, status, rpe, athlete_comment, feedback_at, completed_at")
+    .select("id, athlete_id, scheduled_on, title, discipline, status, rpe, athlete_comment, feedback_at, completed_at, duration_min")
     .in("athlete_id", athleteIds)
     .gte("scheduled_on", from)
     .lte("scheduled_on", to)
