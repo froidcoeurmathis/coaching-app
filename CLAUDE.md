@@ -28,7 +28,7 @@ hebdomadaire ; chaque coaché consulte ses séances sur mobile et les coche quan
 | `athlete_paces` | Allures de référence d'un coaché (ex. EF, Seuil, VMA, allure 10 km) en s/km |
 | `exercises` | Bibliothèque d'exercices du coach (nom, discipline `hyrox`/`running`/`strength`) |
 | `athlete_reference_loads` | Charges de référence (exercice, charge kg, nb de reps : 1RM, 5RM…, date du test) |
-| `sessions` | Séance planifiée : coaché, date, titre, discipline, consignes, statut (`planned`/`done`/`skipped`), `completed_at`, ressenti coaché (RPE, commentaire — utilisé à l'étape 3) |
+| `sessions` | Séance planifiée : coaché, date, titre, discipline, consignes, statut (`planned`/`done`/`skipped`), `completed_at`, ressenti coaché (`rpe` 1–10, `athlete_comment`, `feedback_at`) |
 | `session_blocks` | Blocs ordonnés d'une séance (lettre A, B, C… calculée depuis `position`) : titre, nombre de tours, repos entre tours, notes |
 | `block_exercises` | Exercices d'un bloc (A1, A2… si superset) : exercice, volume (séries, reps, distance, durée), intensité (allure / %FC / RPE), charge (kg ou % de la référence), repos, notes |
 
@@ -54,8 +54,27 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
   `supabaseAdmin()` (service_role) est réservé à `src/lib/auth/accounts.ts`.
 - RLS (`supabase/migrations/20261120000000_auth_rls.sql`) : le coach gère ses coachés, leurs
   allures/charges, séances et blocs, et sa bibliothèque ; le coaché lit uniquement ses données
-  (aucune écriture pour l'instant ; la validation des séances passera par une fonction dédiée
-  à l'étape 3). `profile_id`, `role` et `email` des profils ne sont pas modifiables côté client.
+  (aucune écriture directe). `profile_id`, `role` et `email` des profils ne sont pas modifiables
+  côté client.
+
+## Espace coaché (étape 3)
+
+- Le coaché valide une séance via `log_session(id, status, rpe, comment)` (SECURITY DEFINER,
+  migration `20261121000000_athlete_feedback.sql`) : ne touche que statut, `completed_at`, RPE,
+  commentaire et `feedback_at`, et seulement sur ses propres séances. Une séance future ne peut
+  pas être validée (contrôle UI). Repasser en « prévue » efface le ressenti.
+- `/me` : bandeau des 7 jours (pastilles de statut), séances du jour choisi, compteur de la
+  semaine. `/me/sessions/[id]` : détail des blocs, exercices à cocher pendant la séance
+  (aide-mémoire local, `localStorage`, non envoyé au coach), formulaire Faite / Pas faite +
+  RPE + commentaire.
+- Le coach voit le RPE (rouge si ≥ 8) et le commentaire sur les cartes du calendrier et dans
+  l'éditeur ; enregistrer la séance côté coach conserve le ressenti.
+- PWA : `src/app/manifest.ts`, icônes dans `public/` (+ `src/app/icon.png`, `apple-icon.png`),
+  pas de service worker (non requis pour l'installation). Encart d'aide à l'installation sur
+  `/me` (Android : bouton natif ; iPhone : instructions). Dans l'appli installée sur iPhone, se
+  connecter avec le **code à 6 chiffres** (le lien s'ouvre dans Safari, pas dans l'appli).
+- « Aujourd'hui » et la semaine courante sont calculés en heure de Paris (`todayISO()`,
+  `currentWeekStart()` dans `src/lib/format.ts`), jamais avec `new Date()` brut.
 
 ## Plan en 5 étapes
 
@@ -80,14 +99,16 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
       (blocs, supersets, réordonnancement, statut, duplication, suppression)
 - [x] Étape 2 — lien magique + code, invitation des coachés, RLS coach/coaché, proxy et
       redirections par rôle, page provisoire `/me` (séances du coaché en lecture seule)
-- [ ] Étape 3 — espace coaché mobile
+- [x] Étape 3 — espace coaché mobile (semaine/jour, détail, validation + RPE + commentaire,
+      retour visible par le coach, PWA installable)
+- [ ] Étape 4 — outils coach avancés
 
 ## Routes
 
 - `/login`, `/auth/confirm` : connexion (publiques)
 - Coach (`src/app/(coach)/`) : `/calendar?week=yyyy-MM-dd&athlete=<id>`, `/athletes`
   (`?archived=1`), `/athletes/new`, `/athletes/[id]`
-- Coaché : `/me?week=yyyy-MM-dd`
+- Coaché : `/me?week=yyyy-MM-dd&day=yyyy-MM-dd`, `/me/sessions/[id]`
 
 ## Commandes
 

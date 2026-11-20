@@ -127,3 +127,34 @@ export function toPayload(s: SessionWithBlocks): { session: SessionPayload; bloc
     })),
   };
 }
+
+/** Séance lue avec les droits de l'utilisateur (RLS : le coaché ne lit que les siennes). */
+export async function getOwnSession(id: string): Promise<SessionWithBlocks | null> {
+  await connection();
+  const { data, error } = await (await supabaseServer())
+    .from("sessions")
+    .select(SESSION_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "22P02") return null; // id non UUID
+    throw error;
+  }
+  return data ? sortBlocks(data as SessionWithBlocks) : null;
+}
+
+/** Validation d'une séance par le coaché (fonction SQL log_session). */
+export async function logSession(
+  id: string,
+  status: SessionStatus,
+  rpe: number | null,
+  comment: string | null,
+) {
+  const { error } = await (await supabaseServer()).rpc("log_session", {
+    p_session_id: id,
+    p_status: status,
+    p_rpe: rpe,
+    p_comment: comment,
+  });
+  if (error) throw error;
+}

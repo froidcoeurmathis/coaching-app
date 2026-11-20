@@ -22,6 +22,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  /* Pas de surbrillance grise au toucher sur mobile : les boutons ont leurs propres états. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 dialog::backdrop {

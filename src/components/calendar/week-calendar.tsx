@@ -10,9 +10,9 @@ import {
   formatDay,
   formatWeekRange,
   shiftWeek,
-  toISODate,
+  todayISO,
+  currentWeekStart,
   volumeSummary,
-  weekStartOf,
 } from "@/lib/format";
 import { buttonClass, cn, Select } from "../ui";
 import { SessionEditor, type EditorTarget } from "./session-editor";
@@ -36,8 +36,8 @@ export function WeekCalendar({
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<EditorTarget | null>(null);
-  const today = toISODate(new Date());
-  const isCurrentWeek = weekStart === weekStartOf(new Date());
+  const today = todayISO();
+  const isCurrentWeek = weekStart === currentWeekStart();
   const rows = athleteFilter ? athletes.filter((a) => a.id === athleteFilter) : athletes;
 
   const href = (week: string, athlete = athleteFilter) => {
@@ -61,7 +61,7 @@ export function WeekCalendar({
             ←
           </Link>
           <Link
-            href={href(weekStartOf(new Date()))}
+            href={href(currentWeekStart())}
             className={cn(buttonClass("secondary", "sm"), isCurrentWeek && "pointer-events-none opacity-50")}
           >
             Aujourd&apos;hui
@@ -198,6 +198,26 @@ function SessionCard({ session: s, onClick }: { session: SessionWithBlocks; onCl
         )}
       </div>
       {s.duration_min && <div className="text-xs text-zinc-500">{s.duration_min} min</div>}
+      {(s.rpe != null || s.athlete_comment) && (
+        <div className="mt-1 flex items-center gap-1.5 text-xs">
+          {s.rpe != null && (
+            <span
+              className={cn(
+                "rounded px-1 font-semibold tabular-nums",
+                s.rpe >= 8 ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" : "bg-white/80 text-zinc-700 dark:bg-black/30 dark:text-zinc-300",
+              )}
+              title="Ressenti du coaché (RPE)"
+            >
+              RPE {s.rpe}
+            </span>
+          )}
+          {s.athlete_comment && (
+            <span className="truncate italic text-zinc-600 dark:text-zinc-400" title={s.athlete_comment}>
+              💬 {s.athlete_comment}
+            </span>
+          )}
+        </div>
+      )}
       {s.blocks.length > 0 && (
         <ul className="mt-1 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
           {s.blocks.flatMap((b, bi) =>

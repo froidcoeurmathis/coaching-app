@@ -63,3 +63,9 @@ select public.save_session(
     {"title": "Retour au calme", "exercises": [{"name": "Course", "duration_s": 600, "intensity": "EF"}]}
   ]'::jsonb
 );
+
+-- Retour de la coachée sur la séance du lundi
+update public.sessions
+set status = 'done', completed_at = now(), rpe = 7, feedback_at = now(),
+    athlete_comment = 'Squats solides, les wall balls piquent sur le dernier tour.'
+where title = 'Force + Hyrox';

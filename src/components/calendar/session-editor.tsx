@@ -13,8 +13,9 @@ import {
   DISCIPLINES,
   durationInput,
   exerciseLabel,
-  formatDay,
   parseDuration,
+  formatDateTime,
+  formatDayTitle,
   STATUS_LABEL,
 } from "@/lib/format";
 import { Alert, Button, cn, Field, Input, inputClass, Select, Textarea } from "../ui";
@@ -305,8 +306,8 @@ export function SessionEditor({
             <h2 id="session-editor-title" className="font-semibold">
               {existing ? "Modifier la séance" : "Nouvelle séance"}
             </h2>
-            <p className="text-xs capitalize text-zinc-500">
-              {athleteName} {date && `· ${formatDay(date, "EEEE d MMMM")}`}
+            <p className="text-xs text-zinc-500">
+              {athleteName} {date && `· ${formatDayTitle(date)}`}
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={close} aria-label="Fermer">
@@ -460,6 +461,25 @@ export function SessionEditor({
               <option key={n} value={n} />
             ))}
           </datalist>
+
+          {/* Retour du coaché (lecture seule) */}
+          {existing && (existing.rpe != null || existing.athlete_comment) && (
+            <div className="rounded-lg bg-sky-50 p-3 text-sm dark:bg-sky-950/40">
+              <p className="font-medium">
+                Retour du coaché
+                {existing.feedback_at && (
+                  <span className="font-normal text-zinc-500">
+                    {" "}
+                    · {formatDateTime(existing.feedback_at)}
+                  </span>
+                )}
+              </p>
+              {existing.rpe != null && <p className="mt-0.5">RPE : <strong>{existing.rpe}/10</strong></p>}
+              {existing.athlete_comment && (
+                <p className="mt-0.5 whitespace-pre-line italic">« {existing.athlete_comment} »</p>
+              )}
+            </div>
+          )}
 
           {/* Duplication */}
           {existing && dupOpen && (

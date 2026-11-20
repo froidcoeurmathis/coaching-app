@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { toISODate } from "@/lib/format";
+import { todayISO } from "@/lib/format";
 import type { Athlete, AthleteDetail, Exercise } from "./types";
 
 export type AthleteInput = Pick<
@@ -38,7 +38,7 @@ export async function listAthletes(
   if (error) throw error;
   if (!athletes.length) return [];
 
-  const today = toISODate(new Date());
+  const today = todayISO();
   const { data: upcoming, error: e2 } = await db
     .from("sessions")
     .select("athlete_id, scheduled_on, title")

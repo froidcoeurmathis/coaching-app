@@ -11,13 +11,39 @@ export function weekStartOf(date: Date): string {
   return toISODate(startOfWeek(date, { weekStartsOn: 1 }));
 }
 
+export const TIME_ZONE = "Europe/Paris";
+
+/** Date du jour à Paris (yyyy-MM-dd), identique côté serveur (UTC sur Vercel) et navigateur. */
+export function todayISO(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
+}
+
+/** Lundi de la semaine en cours (heure de Paris). */
+export function currentWeekStart(): string {
+  return weekStartOf(parseISO(todayISO()));
+}
+
 /** Lit un paramètre ?week= et renvoie le lundi correspondant (semaine courante par défaut). */
 export function parseWeekParam(value: string | undefined): string {
   if (value) {
     const d = parseISO(value);
     if (isValid(d)) return weekStartOf(d);
   }
-  return weekStartOf(new Date());
+  return currentWeekStart();
+}
+
+/** Date et heure de Paris d'un horodatage, ex. « 20 nov. à 18:42 ». */
+export function formatDateTime(timestamp: string): string {
+  const d = new Date(timestamp);
+  const day = new Intl.DateTimeFormat("fr-FR", { timeZone: TIME_ZONE, day: "numeric", month: "short" }).format(d);
+  return `${day} à ${formatTime(timestamp)}`;
+}
+
+/** Heure de Paris d'un horodatage, ex. « 18:42 ». */
+export function formatTime(timestamp: string): string {
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" }).format(
+    new Date(timestamp),
+  );
 }
 
 export function toISODate(date: Date): string {
@@ -35,6 +61,12 @@ export function shiftWeek(weekStart: string, weeks: number): string {
 
 export function formatDay(iso: string, pattern = "EEE d"): string {
   return format(parseISO(iso), pattern, { locale: fr });
+}
+
+/** Comme formatDay, avec une majuscule initiale : « Mercredi 18 novembre ». */
+export function formatDayTitle(iso: string, pattern = "EEEE d MMMM"): string {
+  const s = formatDay(iso, pattern);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function formatWeekRange(weekStart: string): string {

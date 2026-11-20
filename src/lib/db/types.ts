@@ -103,6 +103,7 @@ export type Session = {
   completed_at: string | null;
   rpe: number | null;
   athlete_comment: string | null;
+  feedback_at: string | null;
 };
 
 export type SessionWithBlocks = Session & { blocks: SessionBlock[] };

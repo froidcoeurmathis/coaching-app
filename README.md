@@ -34,3 +34,10 @@ avec le lien et le code arrive dans Mailpit, http://127.0.0.1:54324.
 6. Se connecter avec l'adresse `COACH_EMAIL` : le profil coach est créé (ou le profil coach
    existant de l'étape 1 lui est rattaché). Ajouter un coaché avec son e-mail, puis
    « Envoyer l'invitation » depuis sa fiche.
+
+## Installer l'appli sur téléphone (coachés)
+
+- **iPhone** : ouvrir le site dans Safari → *Partager* → *Sur l'écran d'accueil*. À la première
+  ouverture de l'appli installée, se connecter avec le **code à 6 chiffres** reçu par e-mail.
+- **Android** : un bouton « Installer » apparaît sur la page « Mes séances » (ou menu Chrome →
+  *Installer l'application*).
