@@ -30,6 +30,8 @@ export type Athlete = {
   notes: string | null;
   archived_at: string | null;
   invited_at: string | null;
+  invite_token: string | null;
+  invite_created_at: string | null;
   created_at: string;
   updated_at: string;
 };

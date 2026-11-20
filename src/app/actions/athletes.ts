@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireCoach } from "@/lib/auth/session";
+import { headers } from "next/headers";
 import {
   createAthleteAccess,
+  createInviteToken,
   MIN_PASSWORD_LENGTH,
   normalizeEmail,
   setPasswordForProfile,
@@ -203,4 +205,19 @@ export async function setAthletePasswordAction(athleteId: string, password: stri
   if (!res.ok) return { error: res.error };
   revalidatePath(`/athletes/${athleteId}`);
   return { ok: true };
+}
+
+/** Génère un lien d'invitation : le coaché y crée lui-même son compte (e-mail + mot de passe). */
+export async function createInviteLinkAction(athleteId: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  const athlete = await getAthlete(coach.id, athleteId); // RLS : uniquement ses coachés
+  if (!athlete) return { ok: false, error: "Coaché introuvable." };
+  if (athlete.profile_id) return { ok: false, error: "Ce coaché a déjà un compte." };
+  if (athlete.archived_at) return { ok: false, error: "Ce coaché est archivé." };
+  const token = await createInviteToken(athlete.id);
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
+  revalidatePath(`/athletes/${athleteId}`);
+  return { ok: true, url: `${proto}://${host}/join/${token}` };
 }

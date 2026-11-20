@@ -45,6 +45,11 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
 - Le **coach** crée l'accès d'un coaché depuis sa fiche (« Créer l'accès » : e-mail de la fiche +
   mot de passe saisi ou généré, affiché une fois pour être transmis) et peut le réinitialiser.
   `createAthleteAccess` / `setPasswordForProfile` dans `src/lib/auth/accounts.ts` (service_role).
+- **Lien d'invitation** (méthode principale) : sur la fiche, « Créer un lien d'invitation » →
+  `/join/<jeton>` (page publique) où le coaché choisit son e-mail et son mot de passe ; le compte
+  est créé et relié à la fiche, le jeton (`athletes.invite_token`, migration
+  `20261123000000_invite_links.sql`) est effacé. Un nouveau lien remplace l'ancien.
+  `createInviteToken` / `getInvite` / `redeemInvite` dans `src/lib/auth/accounts.ts`.
 - Mot de passe du coach : `npm run set-password -- email "mot de passe"` (script
   `scripts/set-password.mjs`, clé service_role). Première connexion avec `COACH_EMAIL` → profil
   coach créé ou rattaché (`claimProfile`). Chacun change son mot de passe sur `/account`.
@@ -150,7 +155,7 @@ Ces fonctions sont SECURITY INVOKER : la RLS s'applique.
 
 ## Routes
 
-- `/login` : connexion (publique) · `/account` : changer son mot de passe (tous)
+- `/login`, `/join/[token]` : connexion, création de compte par invitation (publiques) · `/account` : changer son mot de passe (tous)
 - Coach (`src/app/(coach)/`) : `/calendar?week=yyyy-MM-dd&athlete=<id>`, `/dashboard`,
   `/athletes` (`?archived=1`), `/athletes/new`, `/athletes/[id]`, `/templates`
 - Coaché : `/me?week=yyyy-MM-dd&day=yyyy-MM-dd`, `/me/sessions/[id]`

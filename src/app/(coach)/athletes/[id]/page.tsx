@@ -63,7 +63,9 @@ async function AthleteDetail({ params }: { params: PageProps<"/athletes/[id]">["
         <h2 className="mb-3 font-medium">Accès à l&apos;application</h2>
         <AthleteAccess
           athleteId={athlete.id}
+          firstName={athlete.first_name}
           email={athlete.email}
+          inviteCreatedAt={athlete.invite_created_at}
           linked={!!athlete.profile_id}
           archived={!!athlete.archived_at}
         />

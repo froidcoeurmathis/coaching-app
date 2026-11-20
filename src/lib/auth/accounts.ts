@@ -166,3 +166,53 @@ export async function setPasswordForProfile(profileId: string, password: string)
   }
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Liens d'invitation
+// ---------------------------------------------------------------------------
+
+/** Crée (ou remplace) le jeton d'invitation d'une fiche. L'appelant a vérifié qu'elle appartient au coach. */
+export async function createInviteToken(athleteId: string): Promise<string> {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = Buffer.from(bytes).toString("base64url");
+  const { error } = await supabaseAdmin()
+    .from("athletes")
+    .update({ invite_token: token, invite_created_at: new Date().toISOString() })
+    .eq("id", athleteId);
+  if (error) throw error;
+  return token;
+}
+
+export type Invite = { athleteId: string; firstName: string; coachName: string };
+
+/** Invitation valide : fiche active, pas encore de compte. */
+export async function getInvite(token: string): Promise<Invite | null> {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  const { data, error } = await supabaseAdmin()
+    .from("athletes")
+    .select("id, first_name, profile_id, archived_at, coach:profiles!athletes_coach_id_fkey(full_name)")
+    .eq("invite_token", token)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || data.profile_id || data.archived_at) return null;
+  const coach = data.coach as unknown as { full_name: string } | null;
+  return { athleteId: data.id, firstName: data.first_name, coachName: coach?.full_name ?? "votre coach" };
+}
+
+/** Crée le compte du coaché depuis son invitation, puis invalide le lien. */
+export async function redeemInvite(token: string, rawEmail: string, password: string): Promise<AccountResult> {
+  const invite = await getInvite(token);
+  if (!invite) return { ok: false, error: "Ce lien d'invitation n'est plus valable. Demandez-en un nouveau à votre coach." };
+  const email = normalizeEmail(rawEmail);
+  const db = supabaseAdmin();
+  const { error } = await db.from("athletes").update({ email }).eq("id", invite.athleteId);
+  if (error) throw error;
+  const res = await createAthleteAccess({ id: invite.athleteId, email }, password);
+  if (!res.ok) {
+    return res.error.startsWith("Cette adresse") || res.error.startsWith("Un compte existe")
+      ? { ok: false, error: "Un compte existe déjà avec cette adresse. Utilisez une autre adresse ou connectez-vous." }
+      : res;
+  }
+  await db.from("athletes").update({ invite_token: null, invite_created_at: null }).eq("id", invite.athleteId);
+  return { ok: true };
+}
